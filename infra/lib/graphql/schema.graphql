@@ -1,0 +1,26 @@
+type BeaconEvent {
+  beaconId: ID!
+  eventId: ID!
+  type: String!
+  pressedByUserId: String!
+  pressedAt: AWSDateTime!
+}
+
+type Query {
+  health: String!
+}
+
+type Mutation {
+  sendBeacon(beaconId: ID!): BeaconEvent!
+}
+
+type Subscription {
+  onBeaconSent(beaconId: ID!): BeaconEvent
+    @aws_subscribe(mutations: ["sendBeacon"])
+}
+
+schema {
+  query: Query
+  mutation: Mutation
+  subscription: Subscription
+}
