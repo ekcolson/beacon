@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 
 import 'src/app.dart';
+import 'src/bootstrap.dart';
 
-void main() {
-  runApp(const BeaconApp());
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final result = await bootstrap();
+  runApp(BeaconApp(bootstrap: result));
 }
