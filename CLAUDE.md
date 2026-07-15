@@ -93,7 +93,30 @@ Load-bearing decisions, with the reasoning that isn't visible in the diff:
 
 ## Known gaps
 
-Deliberately unfixed; don't be surprised by them. No code length/charset
-validation (short codes are enumerable); no TTL on `EventsTable`/`DevicesTable`;
-rare `joinBeacon` race can return null against a non-null field; Lambda log groups
-have no retention set; Android Firebase Gradle plugin wiring not done.
+Deliberately unfixed; don't be surprised by them. Roughly in the order worth
+picking them up:
+
+- **No code validation** beyond "not empty" (`normalizeCode`). Short codes are
+  trivially enumerable — someone can guess `ABC` and receive a stranger's beacons —
+  and there's no length cap on the partition key. The most substantive gap.
+- **No TTL on `EventsTable`/`DevicesTable`.** Both grow forever; every press is
+  stored permanently.
+- **Lambda log groups have no retention**, so logs accumulate indefinitely. CDK's
+  default; cheap to fix and it never gets cheaper.
+- **Rare `joinBeacon` race** can return null against a non-null field, if the
+  conditional put fails and the row is deleted before the follow-up read.
+- **Android Firebase Gradle wiring not done** — needs the
+  `com.google.gms.google-services` plugin in the `.kts` files plus
+  `google-services.json`. Until then `Firebase.initializeApp()` fails at runtime,
+  is caught by `bootstrap()`, and push silently never arrives.
+- **`EventsTable`'s sort key is a random UUID**, so events aren't time-ordered and
+  "recent events for a beacon" can't be queried efficiently. Only matters if a
+  history/feed view is ever wanted.
+
+## Deploy status
+
+Not deployed as of the last session. Stage 1 (backend + web, no Firebase needed)
+is `npx cdk bootstrap` then `npm run deploy`, then the app in two browser tabs with
+the stack outputs — that exercises join → light → realtime fan-out, which is most
+of the system. Stage 2 (push on a real device) needs the Firebase items above.
+`README.md` has the full command sequence.
