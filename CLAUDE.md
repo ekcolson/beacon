@@ -1,0 +1,89 @@
+# CLAUDE.md
+
+Guidance for Claude Code working in this repo. See `README.md` for product and
+setup detail; this file covers what is not obvious from reading the code.
+
+## What this is
+
+Light the Beacon: enter a shared code, press a button, everyone else on that code
+gets a push notification. Flutter client (`app/`) + AWS CDK backend (`infra/`).
+
+## Environment quirks
+
+These will waste your time if you don't know them:
+
+- **Flutter must run through `cmd.exe`.** The SDK at `~/sdks/flutter` is a Windows
+  install; its bash entrypoint fails under WSL with a `$'\r'` error. Use:
+  ```bash
+  cmd.exe /c "cd /d C:\Users\nerik\beacon\beacon\app && flutter.bat <cmd>"
+  ```
+- **`node` is not on the Linux PATH**, only `npm`/`npx` (via Windows interop) and
+  `node.exe`. `npm` works fine from `infra/`.
+- **The repo root is nested**: `beacon/beacon/`. The outer directory is a container.
+- **Line endings**: `.gitattributes` normalizes to LF. The working tree is a
+  Windows checkout, so without it every file looks rewritten in a diff. If you see
+  that, run `git add --renormalize .` rather than committing the noise.
+- `git` needs `-c safe.directory='*'` here (dubious-ownership on the Windows mount).
+
+## Commands
+
+```bash
+# infra/ — always run both before committing infra changes
+npm run build      # tsc
+npm run synth      # cdk synth; catches wiring errors tsc can't
+
+# app/ — via cmd.exe as above
+flutter analyze
+flutter test
+flutter build web  # full compile check; catches more than analyze
+```
+
+## Architecture
+
+`AppSync (IAM auth) → Lambda resolvers → DynamoDB`, with push fan-out driven off a
+DynamoDB stream. Five Lambdas: `join-beacon`, `register-device`,
+`unregister-device`, `send-beacon`, `notify-beacon`.
+
+Load-bearing decisions, with the reasoning that isn't visible in the diff:
+
+- **No accounts, by design.** AppSync uses IAM auth backed by a Cognito Identity
+  Pool with *only* the unauthenticated role. Every install gets a stable
+  `cognitoIdentityId` with no signup. Don't reintroduce a User Pool or login
+  screen unless asked — an earlier scaffold had one and it was deliberately removed.
+- **The code is the beacon id.** `normalizeCode` (trim + uppercase) turns user
+  input into the partition key, so there is no separate lookup table. The server's
+  normalized value is authoritative — the client uses what `joinBeacon` returns.
+- **Push goes to FCM directly** (HTTP v1 API + `google-auth-library`, not
+  `firebase-admin`, not SNS/APNs). One path covers Android and iOS, and it keeps
+  the Lambda bundle small. The service account JSON lives in Secrets Manager and
+  must be loaded manually after deploy.
+- **One write drives two channels.** `sendBeacon` writes to `EventsTable`; that
+  write both fires the `onBeaconSent` subscription and triggers `notify-beacon`
+  via the stream. Don't add a second write path for notifications.
+- **Joining ≠ lighting.** Joining registers the push token and subscribes, which
+  is what makes a device a recipient. Folding it into the button press would mean
+  you never receive anything until you light the beacon yourself.
+- **Only `UNREGISTERED`/`SENDER_ID_MISMATCH` count as dead tokens** in
+  `notify-beacon`. FCM also returns `INVALID_ARGUMENT` for a malformed *message*,
+  so treating that as a dead token would delete every device on a beacon over a
+  bug in our own payload.
+- **`dispose()` deliberately does not unregister.** Receiving pushes while the app
+  is closed is the point of the product.
+
+## Conventions
+
+- The app has no state management library — `StatefulWidget` + `setState`. Match it.
+- Config comes from `--dart-define` at runtime (`Env` → `buildAmplifyConfig()`), not
+  a checked-in `amplifyconfiguration.dart`, so redeploys don't require regeneration.
+- `bootstrap()` lets both Amplify and Firebase fail independently and surfaces a
+  banner. Preserve that: it's what allows testing the backend with no Firebase project.
+- Comments explain *why*, not what. Don't annotate the obvious.
+- Widget tests avoid the network by passing `backendReady: false`, or by mocking
+  SharedPreferences empty so the restore path returns before touching Amplify.
+
+## Known gaps
+
+Deliberately unfixed; don't be surprised by them. No rate limit on `sendBeacon`;
+no code length/charset validation (short codes are enumerable); no TTL on
+`EventsTable`/`DevicesTable`; rare `joinBeacon` race can return null against a
+non-null field; Android Firebase Gradle plugin wiring not done.
