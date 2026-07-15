@@ -1,0 +1,12 @@
+{
+  "name": "beacon-icons",
+  "private": true,
+  "description": "Generates the beacon icon set from vector source",
+  "scripts": {
+    "build": "node assets.js",
+    "preview": "node gen.js"
+  },
+  "dependencies": {
+    "@resvg/resvg-js": "^2.6.2"
+  }
+}

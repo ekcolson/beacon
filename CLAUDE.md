@@ -31,6 +31,10 @@ npm run synth      # cdk synth; catches wiring errors tsc can't
 flutter analyze
 flutter test
 flutter build web  # full compile check; catches more than analyze
+
+# tool/icons/ — only after changing the beacon artwork
+npm install
+npm run build      # redraws every icon into app/; see its README
 ```
 
 ## Architecture
@@ -82,6 +86,13 @@ Load-bearing decisions, with the reasoning that isn't visible in the diff:
 
 ## Conventions
 
+- **The icon art is generated, not hand-drawn.** `tool/icons/gen.js` draws the
+  beacon and `npm run build` renders the whole set into `app/`. Both the PNGs and
+  `app/assets/beacon/src/*.svg` are *output* — restyle by editing `gen.js` and
+  re-running, never by hand-editing them. `tool/icons/README.md` has the
+  constraints that shaped it; the one worth knowing up front is that the unlit
+  state is kindling waiting in the basket, not "the lit icon minus the fire" —
+  bare stone reads as a chess rook rather than a beacon.
 - The app has no state management library — `StatefulWidget` + `setState`. Match it.
 - Config comes from `--dart-define` at runtime (`Env` → `buildAmplifyConfig()`), not
   a checked-in `amplifyconfiguration.dart`, so redeploys don't require regeneration.

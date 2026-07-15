@@ -23,3 +23,9 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  # The 2.0x/3.0x variants beside these are picked up automatically. The SVG
+  # sources in assets/beacon/src are deliberately not listed: they are the art's
+  # source of truth, not something to ship in the bundle.
+  assets:
+    - assets/beacon/beacon_lit.png
+    - assets/beacon/beacon_unlit.png

@@ -9,6 +9,11 @@ import 'push_service.dart';
 
 const _lastCodeKey = 'last_beacon_code';
 
+/// How long the beacon stays alight after an event before falling dark again.
+/// The event list is the permanent record; the flame is only a signal that
+/// something just happened.
+const _litDuration = Duration(seconds: 8);
+
 class BeaconPage extends StatefulWidget {
   const BeaconPage({super.key, required this.bootstrap});
 
@@ -40,6 +45,11 @@ class _BeaconPageState extends State<BeaconPage> {
   bool _lighting = false;
   String? _error;
 
+  /// Whether the beacon graphic is currently alight. Set by [_onEvent] for any
+  /// press on this beacon, including our own — the subscription echoes it back.
+  bool _lit = false;
+  Timer? _litTimer;
+
   /// Mirrors the server's `normalizeCode`, only to decide which button to show.
   String get _typedBeaconId => _codeController.text.trim().toUpperCase();
 
@@ -57,6 +67,7 @@ class _BeaconPageState extends State<BeaconPage> {
   void dispose() {
     // Deliberately no unregister here: closing the app should not stop pushes.
     _subscription?.cancel();
+    _litTimer?.cancel();
     _codeController
       ..removeListener(_onCodeChanged)
       ..dispose();
@@ -118,6 +129,7 @@ class _BeaconPageState extends State<BeaconPage> {
       setState(() {
         _beaconId = beaconId;
         _events.clear();
+        _douse();
         // Show the normalized form the server actually joined us to.
         _codeController.text = beaconId;
       });
@@ -169,7 +181,23 @@ class _BeaconPageState extends State<BeaconPage> {
 
   void _onEvent(BeaconEvent event) {
     if (!mounted) return;
-    setState(() => _events.insert(0, event));
+    setState(() {
+      _events.insert(0, event);
+      _lit = true;
+    });
+    // Restart on every press, so a flurry keeps it lit rather than going dark
+    // partway through.
+    _litTimer?.cancel();
+    _litTimer = Timer(_litDuration, () {
+      if (mounted) setState(() => _lit = false);
+    });
+  }
+
+  /// Puts the beacon out immediately, for when we stop watching one — leaving
+  /// it burning for a beacon we've left would be a lie.
+  void _douse() {
+    _litTimer?.cancel();
+    _lit = false;
   }
 
   Future<void> _leave() async {
@@ -178,6 +206,7 @@ class _BeaconPageState extends State<BeaconPage> {
     setState(() {
       _beaconId = null;
       _events.clear();
+      _douse();
       _error = null;
       _codeController.clear();
     });
@@ -200,6 +229,8 @@ class _BeaconPageState extends State<BeaconPage> {
               children: [
                 if (widget.bootstrap.warning != null)
                   _Banner(message: widget.bootstrap.warning!),
+                _BeaconGraphic(lit: _lit),
+                const SizedBox(height: 20),
                 TextField(
                   controller: _codeController,
                   // Stays editable while joined: typing a new code and
@@ -268,6 +299,30 @@ class _BeaconPageState extends State<BeaconPage> {
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The beacon itself: dark stone with kindling waiting, or alight.
+class _BeaconGraphic extends StatelessWidget {
+  const _BeaconGraphic({required this.lit});
+
+  final bool lit;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 148,
+      child: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 450),
+        child: Image.asset(
+          lit ? 'assets/beacon/beacon_lit.png' : 'assets/beacon/beacon_unlit.png',
+          // Without a key the switcher sees one Image and never crossfades.
+          key: ValueKey<bool>(lit),
+          height: 148,
+          semanticLabel: lit ? 'Beacon lit' : 'Beacon dark',
         ),
       ),
     );

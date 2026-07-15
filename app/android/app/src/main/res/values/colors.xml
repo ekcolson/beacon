@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Tint Android applies to the notification's small icon. -->
+    <color name="beacon_ember">#FF8A1F</color>
+</resources>

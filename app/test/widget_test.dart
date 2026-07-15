@@ -82,4 +82,12 @@ void main() {
 
     expect(tester.widget<TextField>(find.byType(TextField)).enabled, isTrue);
   });
+
+  testWidgets('shows the beacon dark until something lights it', (tester) async {
+    await tester.pumpWidget(BeaconApp(bootstrap: _degraded()));
+
+    final image = tester.widget<Image>(find.byType(Image));
+    expect((image.image as AssetImage).assetName,
+        'assets/beacon/beacon_unlit.png');
+  });
 }
