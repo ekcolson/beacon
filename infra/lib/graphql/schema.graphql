@@ -1,9 +1,19 @@
+type Beacon {
+  beaconId: ID!
+  createdAt: AWSDateTime!
+}
+
 type BeaconEvent {
   beaconId: ID!
   eventId: ID!
   type: String!
-  pressedByUserId: String!
+  pressedBy: ID!
   pressedAt: AWSDateTime!
+}
+
+enum DevicePlatform {
+  IOS
+  ANDROID
 }
 
 type Query {
@@ -11,6 +21,9 @@ type Query {
 }
 
 type Mutation {
+  joinBeacon(code: ID!): Beacon!
+  registerDevice(beaconId: ID!, pushToken: String!, platform: DevicePlatform!): Boolean!
+  unregisterDevice(beaconId: ID!): Boolean!
   sendBeacon(beaconId: ID!): BeaconEvent!
 }
 

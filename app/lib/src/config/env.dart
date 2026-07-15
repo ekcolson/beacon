@@ -12,13 +12,13 @@ class Env {
     defaultValue: '',
   );
 
-  static const cognitoUserPoolId = String.fromEnvironment(
-    'COGNITO_USER_POOL_ID',
+  static const cognitoIdentityPoolId = String.fromEnvironment(
+    'COGNITO_IDENTITY_POOL_ID',
     defaultValue: '',
   );
 
-  static const cognitoClientId = String.fromEnvironment(
-    'COGNITO_CLIENT_ID',
-    defaultValue: '',
-  );
+  /// False until the CDK outputs are passed in via --dart-define. While false,
+  /// the backend is unreachable and the app runs in a degraded, offline state.
+  static bool get isConfigured =>
+      appSyncUrl.isNotEmpty && cognitoIdentityPoolId.isNotEmpty;
 }
