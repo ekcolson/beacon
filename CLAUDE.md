@@ -55,8 +55,16 @@ Load-bearing decisions, with the reasoning that isn't visible in the diff:
   normalized value is authoritative — the client uses what `joinBeacon` returns.
 - **Push goes to FCM directly** (HTTP v1 API + `google-auth-library`, not
   `firebase-admin`, not SNS/APNs). One path covers Android and iOS, and it keeps
-  the Lambda bundle small. The service account JSON lives in Secrets Manager and
-  must be loaded manually after deploy.
+  the Lambda bundle small.
+- **The FCM service account is an SSM SecureString the stack does not create.**
+  CloudFormation cannot create SecureString parameters at all, so the stack only
+  computes the name (`/{appName}/{envName}/fcm-service-account`) and grants
+  `ssm:GetParameter`; a human runs `aws ssm put-parameter --type SecureString`.
+  Don't "fix" this by switching to a plain String — and no `kms:Decrypt` grant is
+  needed, because the default `aws/ssm` key already allows Decrypt for every IAM
+  principal in the account. Parameter Store over Secrets Manager purely for cost:
+  it made the stack's idle cost $0 instead of $0.40/mo, and this credential
+  doesn't need rotation or cross-account sharing.
 - **One write drives two channels.** `sendBeacon` writes to `EventsTable`; that
   write both fires the `onBeaconSent` subscription and triggers `notify-beacon`
   via the stream. Don't add a second write path for notifications.
@@ -69,6 +77,13 @@ Load-bearing decisions, with the reasoning that isn't visible in the diff:
   bug in our own payload.
 - **`dispose()` deliberately does not unregister.** Receiving pushes while the app
   is closed is the point of the product.
+- **The rate limit is per beacon, not per device**, and is a conditional
+  `UpdateItem` on the beacon row rather than a counter or WAF rule — DynamoDB
+  evaluates it atomically, so concurrent presses can't both win. Per-beacon is the
+  right unit because once a beacon is lit everyone is already notified; a second
+  light seconds later is noise whoever sends it. Its `attribute_exists(beaconId)`
+  clause is load-bearing: without it the update would upsert a beacon row with no
+  `createdAt`, and `joinBeacon` would then return null for a non-null field.
 
 ## Conventions
 
@@ -83,7 +98,7 @@ Load-bearing decisions, with the reasoning that isn't visible in the diff:
 
 ## Known gaps
 
-Deliberately unfixed; don't be surprised by them. No rate limit on `sendBeacon`;
-no code length/charset validation (short codes are enumerable); no TTL on
-`EventsTable`/`DevicesTable`; rare `joinBeacon` race can return null against a
-non-null field; Android Firebase Gradle plugin wiring not done.
+Deliberately unfixed; don't be surprised by them. No code length/charset
+validation (short codes are enumerable); no TTL on `EventsTable`/`DevicesTable`;
+rare `joinBeacon` race can return null against a non-null field; Lambda log groups
+have no retention set; Android Firebase Gradle plugin wiring not done.

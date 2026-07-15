@@ -8,11 +8,21 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import { DynamoEventSource } from 'aws-cdk-lib/aws-lambda-event-sources';
 import { NodejsFunction } from 'aws-cdk-lib/aws-lambda-nodejs';
-import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { Construct } from 'constructs';
 
+export interface BeaconStackProps extends cdk.StackProps {
+  readonly appName: string;
+  readonly envName: string;
+}
+
+/// Minimum gap between lights of the same beacon. Deliberately per-beacon rather
+/// than per-device: once a beacon is lit everyone has already been notified, so a
+/// second light seconds later is noise no matter who sends it — and that also
+/// closes the spam vector for anyone who knows (or guesses) the code.
+const LIGHT_COOLDOWN_SECONDS = 10;
+
 export class BeaconStack extends cdk.Stack {
-  constructor(scope: Construct, id: string, props?: cdk.StackProps) {
+  constructor(scope: Construct, id: string, props: BeaconStackProps) {
     super(scope, id, props);
 
     // Anonymous, code-only identity: every app install gets a stable
@@ -111,15 +121,17 @@ export class BeaconStack extends cdk.Stack {
     const sendBeaconFn = new NodejsFunction(this, 'SendBeaconFn', {
       entry: path.join(__dirname, '..', 'lambda', 'send-beacon.ts'),
       runtime: lambda.Runtime.NODEJS_20_X,
-      environment: lambdaEnv,
+      environment: { ...lambdaEnv, LIGHT_COOLDOWN_SECONDS: String(LIGHT_COOLDOWN_SECONDS) },
     });
     eventsTable.grantWriteData(sendBeaconFn);
+    // The cooldown is a conditional update against the beacon row.
+    beaconsTable.grantWriteData(sendBeaconFn);
 
-    // Firebase service account JSON, populated manually after deploy:
-    //   aws secretsmanager put-secret-value --secret-id <FcmSecretArn output> --secret-string file://service-account.json
-    const fcmSecret = new secretsmanager.Secret(this, 'FcmServiceAccountSecret', {
-      description: 'Firebase service account JSON used to send FCM push notifications.',
-    });
+    // Firebase service account JSON. CloudFormation cannot create SecureString
+    // parameters, so the stack only references it by name — create it yourself:
+    //   aws ssm put-parameter --name <FcmParameterName output> \
+    //     --type SecureString --value file://service-account.json
+    const fcmParameterName = `/${props.appName}/${props.envName}/fcm-service-account`;
 
     const notifyBeaconFn = new NodejsFunction(this, 'NotifyBeaconFn', {
       entry: path.join(__dirname, '..', 'lambda', 'notify-beacon.ts'),
@@ -127,12 +139,25 @@ export class BeaconStack extends cdk.Stack {
       timeout: cdk.Duration.seconds(10),
       environment: {
         DEVICES_TABLE: devicesTable.tableName,
-        FCM_SECRET_ARN: fcmSecret.secretArn,
+        FCM_PARAMETER_NAME: fcmParameterName,
       },
     });
     // Read to find recipients, write to prune tokens FCM reports as dead.
     devicesTable.grantReadWriteData(notifyBeaconFn);
-    fcmSecret.grantRead(notifyBeaconFn);
+    // Decrypt needs no explicit kms grant: the default aws/ssm key allows it for
+    // every IAM principal in the account.
+    notifyBeaconFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        actions: ['ssm:GetParameter'],
+        resources: [
+          cdk.Stack.of(this).formatArn({
+            service: 'ssm',
+            resource: 'parameter',
+            resourceName: fcmParameterName.slice(1),
+          }),
+        ],
+      }),
+    );
     notifyBeaconFn.addEventSource(
       new DynamoEventSource(eventsTable, {
         startingPosition: lambda.StartingPosition.LATEST,
@@ -177,8 +202,9 @@ export class BeaconStack extends cdk.Stack {
       value: identityPool.ref,
     });
 
-    new cdk.CfnOutput(this, 'FcmSecretArn', {
-      value: fcmSecret.secretArn,
+    new cdk.CfnOutput(this, 'FcmParameterName', {
+      value: fcmParameterName,
+      description: 'Create this as a SecureString before push notifications will work.',
     });
 
     new cdk.CfnOutput(this, 'Region', {

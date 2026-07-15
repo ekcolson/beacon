@@ -1,11 +1,11 @@
-import { GetSecretValueCommand, SecretsManagerClient } from '@aws-sdk/client-secrets-manager';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DeleteCommand, DynamoDBDocumentClient, QueryCommand } from '@aws-sdk/lib-dynamodb';
+import { GetParameterCommand, SSMClient } from '@aws-sdk/client-ssm';
 import type { DynamoDBStreamEvent } from 'aws-lambda';
 import { GoogleAuth } from 'google-auth-library';
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
-const secretsManager = new SecretsManagerClient({});
+const ssm = new SSMClient({});
 
 /// FCM error codes that mean the token itself is permanently dead, so the row
 /// should be dropped. Deliberately excludes INVALID_ARGUMENT: FCM also returns
@@ -27,12 +27,17 @@ async function getFcmCredentials(): Promise<FcmCredentials> {
     return cachedCredentials;
   }
 
-  const secret = await secretsManager.send(
-    new GetSecretValueCommand({ SecretId: process.env.FCM_SECRET_ARN }),
+  const parameter = await ssm.send(
+    new GetParameterCommand({
+      Name: process.env.FCM_PARAMETER_NAME,
+      WithDecryption: true,
+    }),
   );
-  const serviceAccount = JSON.parse(secret.SecretString ?? '{}');
+  const serviceAccount = JSON.parse(parameter.Parameter?.Value ?? '{}');
   if (!serviceAccount.project_id) {
-    throw new Error('FCM service account secret has no project_id; has it been populated yet?');
+    throw new Error(
+      `FCM service account at ${process.env.FCM_PARAMETER_NAME} has no project_id; has it been populated yet?`,
+    );
   }
 
   cachedCredentials = {

@@ -11,4 +11,6 @@ const envName = app.node.tryGetContext('envName') ?? 'dev';
 new BeaconStack(app, `${appName}-${envName}-stack`, {
   stackName: `${appName}-${envName}`,
   description: 'Beacon MVP infrastructure managed by CDK.',
+  appName,
+  envName,
 });
