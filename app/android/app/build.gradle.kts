@@ -5,8 +5,16 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Applied only when the Firebase config is actually present. The plugin fails
+// the build outright if google-services.json is missing, which would take the
+// whole Android build down before Firebase exists — and bootstrap() is built so
+// the app runs fine without it: backend and in-app realtime work, push doesn't.
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 android {
-    namespace = "com.example.beacon_app"
+    namespace = "dev.rickyshack.beacon"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -20,8 +28,11 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.beacon_app"
+        // Reverse-DNS of a domain we control. This is the app's permanent
+        // identity: Play will not let it change once published, and
+        // google-services.json is bound to it, so a rename means re-registering
+        // the Firebase app.
+        applicationId = "dev.rickyshack.beacon"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

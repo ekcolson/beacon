@@ -80,14 +80,29 @@ Push works through FCM for both Android and iOS, which avoids per-platform SNS
 and APNs certificate setup. It is optional: without it, in-app realtime updates
 still work, which is enough to exercise the whole backend from two browser tabs.
 
-1. Create a Firebase project and register an Android app under the package name
-   in `app/android/app/build.gradle.kts` (`com.example.beacon_app`).
-2. Put `google-services.json` in `app/android/app/`.
-3. Add the `com.google.gms.google-services` Gradle plugin to
-   `app/android/settings.gradle.kts` and `app/android/app/build.gradle.kts`.
-   *(Not yet done — `flutter create` does not add it, and without it
-   `Firebase.initializeApp()` fails at runtime and push silently never arrives.)*
-4. Generate a service account key (Project Settings → Service Accounts) and store
+The Gradle side is wired up already. What is left is the part only you can do:
+creating the Firebase project and downloading its config.
+
+1. Create a Firebase project, then register an **Android** app under exactly this
+   package name:
+
+   ```
+   dev.rickyshack.beacon
+   ```
+
+   It has to match `applicationId` in `app/android/app/build.gradle.kts`, or the
+   build fails with *"No matching client found for package name"*. For iOS,
+   register a second app under the same string as the bundle id.
+2. Download `google-services.json` into `app/android/app/`, and for iOS
+   `GoogleService-Info.plist` into `app/ios/Runner/` (add it to the Runner target
+   in Xcode). Both are gitignored: they are not really secret — they ship inside
+   the app bundle, and the credential that can actually *send* pushes is the
+   service account below — but this repo is public, so they stay out of it.
+
+   Until `google-services.json` exists the Gradle plugin is skipped deliberately,
+   so the Android build keeps working and only push is missing. Once it is there
+   the plugin applies itself; nothing to switch on.
+3. Generate a service account key (Project Settings → Service Accounts) and store
    it as a SecureString. CloudFormation cannot create SecureString parameters, so
    the stack only grants read on the name it expects (`FcmParameterName` output)
    — you create the parameter itself:
@@ -132,4 +147,5 @@ tradeoff is that one member's light briefly blocks another's.
   and there is no length cap.
 - No TTL on `EventsTable`/`DevicesTable`; both grow forever.
 - A rare `joinBeacon` race can return null against a non-null schema field.
-- Android Firebase Gradle wiring is not done (see above).
+- Push is untested on a real device: the Gradle wiring is in place, but nobody has
+  supplied a `google-services.json` yet (see above).

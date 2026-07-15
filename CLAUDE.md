@@ -76,6 +76,18 @@ Load-bearing decisions, with the reasoning that isn't visible in the diff:
   bug in our own payload.
 - **`dispose()` deliberately does not unregister.** Receiving pushes while the app
   is closed is the point of the product.
+- **The `google-services` plugin is applied conditionally**, from an
+  `if (file("google-services.json").exists())` in `app/android/app/build.gradle.kts`.
+  The plugin hard-fails the build when that file is absent, which would break the
+  Android build for anyone without a Firebase project and contradict `bootstrap()`
+  letting Firebase fail on its own. Don't "tidy" it into the `plugins {}` block.
+  It's declared `apply false` in `settings.gradle.kts` purely to pin the version.
+- **`applicationId` is `dev.rickyshack.beacon`** — reverse-DNS of a domain the
+  owner controls, matching the iOS bundle id and the Android `namespace`. It is
+  the app's permanent identity: Play forbids changing it post-publish, and
+  `google-services.json` is bound to it, so renaming means re-registering the
+  Firebase app. `MainActivity.kt`'s package must track `namespace`, since the
+  manifest resolves `.MainActivity` against it.
 - **The rate limit is per beacon, not per device**, and is a conditional
   `UpdateItem` on the beacon row rather than a counter or WAF rule — DynamoDB
   evaluates it atomically, so concurrent presses can't both win. Per-beacon is the
@@ -116,10 +128,10 @@ picking them up:
   default; cheap to fix and it never gets cheaper.
 - **Rare `joinBeacon` race** can return null against a non-null field, if the
   conditional put fails and the row is deleted before the follow-up read.
-- **Android Firebase Gradle wiring not done** — needs the
-  `com.google.gms.google-services` plugin in the `.kts` files plus
-  `google-services.json`. Until then `Firebase.initializeApp()` fails at runtime,
-  is caught by `bootstrap()`, and push silently never arrives.
+- **Push has never run on a real device.** The Gradle wiring is done, but no
+  `google-services.json` exists yet, so `Firebase.initializeApp()` still fails at
+  runtime and is caught by `bootstrap()`. Only a human with the Firebase console
+  can clear this; `README.md` has the steps.
 - **`EventsTable`'s sort key is a random UUID**, so events aren't time-ordered and
   "recent events for a beacon" can't be queried efficiently. Only matters if a
   history/feed view is ever wanted.

@@ -10,6 +10,15 @@ node_modules/
 cdk.out/
 dist/
 
+# Firebase client config. Not strictly secret — it ships inside the app bundle,
+# and the credential that can actually send pushes is the service account in SSM,
+# not this. Kept out anyway because the repo is public: it names the Firebase
+# project, and an API key sitting in a public repo attracts scanners and gets
+# riskier the moment that project gains anything beyond FCM. Fetch it from the
+# Firebase console instead; see README.
+app/android/app/google-services.json
+app/ios/Runner/GoogleService-Info.plist
+
 # IDE / OS
 .idea/
 .vscode/
