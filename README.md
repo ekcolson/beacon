@@ -53,7 +53,7 @@ npx cdk bootstrap      # once per account/region
 npm run deploy
 ```
 
-Note the stack outputs: `AppSyncUrl`, `IdentityPoolId`, `Region`, `FcmSecretArn`.
+Note the stack outputs: `AppSyncUrl`, `IdentityPoolId`, `Region`, `FcmParameterName`.
 
 ### Run the app
 
@@ -90,12 +90,16 @@ still work, which is enough to exercise the whole backend from two browser tabs.
    `app/android/settings.gradle.kts` and `app/android/app/build.gradle.kts`.
    *(Not yet done — `flutter create` does not add it, and without it
    `Firebase.initializeApp()` fails at runtime and push silently never arrives.)*
-4. Generate a service account key (Project Settings → Service Accounts) and load
-   it into the secret the stack created:
+4. Generate a service account key (Project Settings → Service Accounts) and store
+   it as a SecureString. CloudFormation cannot create SecureString parameters, so
+   the stack only grants read on the name it expects (`FcmParameterName` output)
+   — you create the parameter itself:
    ```bash
-   aws secretsmanager put-secret-value \
-     --secret-id <FcmSecretArn> --secret-string file://service-account.json
+   aws ssm put-parameter --name /beacon/dev/fcm-service-account \
+     --type SecureString --value file://service-account.json
    ```
+   Re-run with `--overwrite` to rotate the key. Encryption uses the default
+   `aws/ssm` KMS key, which needs no extra IAM setup.
 
 ## Commands
 
@@ -116,9 +120,17 @@ windows with the same code. Lighting in one should appear in the other's feed
 instantly. Push requires the Firebase steps above and two physical devices, with
 the receiving app backgrounded.
 
+## Rate limiting
+
+A beacon can only be lit once every 10 seconds, enforced by a conditional update
+on the beacon row (see `LIGHT_COOLDOWN_SECONDS` in `infra/lib/stacks/beacon-stack.ts`).
+The limit is per *beacon*, not per device: once a beacon is lit everyone has
+already been notified, so a second light seconds later is noise regardless of who
+sends it, and that also closes the spam vector for anyone who knows the code. The
+tradeoff is that one member's light briefly blocks another's.
+
 ## Known gaps
 
-- No rate limit on `sendBeacon` — anyone with a code can spam push to members.
 - No code validation beyond "not empty", so short codes are trivially guessable
   and there is no length cap.
 - No TTL on `EventsTable`/`DevicesTable`; both grow forever.

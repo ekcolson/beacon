@@ -38,9 +38,17 @@ Resources:
 Push fan-out needs a Firebase project with Cloud Messaging enabled:
 1. Create a Firebase project (console.firebase.google.com) and generate a service
    account key (Project Settings → Service Accounts → Generate new private key).
-2. After `cdk deploy`, populate the placeholder secret with that JSON:
-   `aws secretsmanager put-secret-value --secret-id <FcmSecretArn output> --secret-string file://service-account.json`
-3. The Flutter app (Phase 3) will need the corresponding `google-services.json` /
+2. Store it as an SSM SecureString at the name in the `FcmParameterName` output.
+   The stack does not create this parameter — CloudFormation cannot create
+   SecureString parameters — it only grants `notify-beacon` read access to the name:
+   `aws ssm put-parameter --name /beacon/dev/fcm-service-account --type SecureString --value file://service-account.json`
+   Add `--overwrite` to rotate. The default `aws/ssm` key needs no extra IAM setup.
+3. The Flutter app needs the corresponding `google-services.json` /
    `GoogleService-Info.plist` and the `firebase_messaging` plugin to receive pushes.
 
-Not yet built: the Flutter-side code entry UI / GraphQL client and FCM token registration.
+### Rate limiting
+
+`sendBeacon` enforces a per-beacon cooldown (`LIGHT_COOLDOWN_SECONDS`, default 10s)
+via a conditional update on the beacon row. The condition also requires the beacon
+to exist, so lighting without joining first is rejected rather than silently
+upserting a beacon row with no `createdAt`.
