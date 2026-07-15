@@ -70,12 +70,9 @@ flutter run -d chrome \
 
 Without those defines the app still starts, but shows a banner and stays offline.
 
-**On Windows/WSL:** the Flutter SDK at `~/sdks/flutter` is a Windows install and
-its bash entrypoint fails under WSL. Run it through `cmd.exe` instead:
-
-```bash
-cmd.exe /c "cd /d C:\path\to\app && flutter.bat test"
-```
+**On WSL:** keep the repo on the Linux filesystem rather than a `/mnt/*` Windows
+mount, and use a native Linux Flutter SDK. Windows mounts lack the `metadata`
+option, so `chmod` fails and `npm install` can't link `node_modules/.bin`.
 
 ### Push notifications
 

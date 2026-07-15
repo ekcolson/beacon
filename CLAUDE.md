@@ -8,22 +8,17 @@ setup detail; this file covers what is not obvious from reading the code.
 Light the Beacon: enter a shared code, press a button, everyone else on that code
 gets a push notification. Flutter client (`app/`) + AWS CDK backend (`infra/`).
 
-## Environment quirks
+## Environment
 
-These will waste your time if you don't know them:
-
-- **Flutter must run through `cmd.exe`.** The SDK at `~/sdks/flutter` is a Windows
-  install; its bash entrypoint fails under WSL with a `$'\r'` error. Use:
-  ```bash
-  cmd.exe /c "cd /d C:\Users\nerik\beacon\beacon\app && flutter.bat <cmd>"
-  ```
-- **`node` is not on the Linux PATH**, only `npm`/`npx` (via Windows interop) and
-  `node.exe`. `npm` works fine from `infra/`.
-- **The repo root is nested**: `beacon/beacon/`. The outer directory is a container.
-- **Line endings**: `.gitattributes` normalizes to LF. The working tree is a
-  Windows checkout, so without it every file looks rewritten in a diff. If you see
-  that, run `git add --renormalize .` rather than committing the noise.
-- `git` needs `-c safe.directory='*'` here (dubious-ownership on the Windows mount).
+- **Line endings**: `.gitattributes` normalizes to LF. If a diff ever shows whole
+  files rewritten rather than the lines you touched, that's CRLF — run
+  `git add --renormalize .`, don't commit the noise.
+- **`node_modules` is not portable across platforms**: esbuild ships an OS-specific
+  binary, so a tree installed on one OS can't bundle the Lambdas on another.
+  Reinstall it rather than copying one across.
+- **On WSL, keep the repo on the Linux filesystem**, not a `/mnt/*` Windows mount.
+  Those are mounted without the `metadata` option, so chmod silently fails with
+  `EPERM`, which breaks `npm install` when it links `node_modules/.bin`.
 
 ## Commands
 
@@ -32,7 +27,7 @@ These will waste your time if you don't know them:
 npm run build      # tsc
 npm run synth      # cdk synth; catches wiring errors tsc can't
 
-# app/ — via cmd.exe as above
+# app/
 flutter analyze
 flutter test
 flutter build web  # full compile check; catches more than analyze
